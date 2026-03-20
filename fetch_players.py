@@ -130,21 +130,35 @@ def fetch_nst(season_id, stdoi, sit="5v5"):
     time.sleep(1.0)
     return rows
 
+# NST uses different table IDs depending on the view
+NST_TABLE_IDS = {"players", "skaters", "skaterstats", "report"}
+
 def parse_nst_html(html, label):
+    import re as _re
     from html.parser import HTMLParser
+
+    # Debug: report all table IDs found when we get 0 rows
+    all_table_ids = _re.findall(r'<table[^>]+id="([^"]+)"', html)
+
     class P(HTMLParser):
         def __init__(self):
             super().__init__()
             self.in_t = self.in_th = self.in_td = False
             self.headers = []; self.rows = []; self.cur_row = []
             self.cell = ""; self.hdr_done = False
+            self.active_id = None
+
         def handle_starttag(self, tag, attrs):
             d = dict(attrs)
-            if tag == "table" and d.get("id") == "players": self.in_t = True
+            # Accept any known NST table ID
+            if tag == "table" and d.get("id", "").lower() in NST_TABLE_IDS:
+                self.in_t = True
+                self.active_id = d.get("id")
             if not self.in_t: return
             if tag == "th":   self.in_th = True;  self.cell = ""
             elif tag == "td": self.in_td = True;  self.cell = ""
             elif tag == "tr" and self.hdr_done: self.cur_row = []
+
         def handle_endtag(self, tag):
             if not self.in_t: return
             if tag == "th":
@@ -156,10 +170,26 @@ def parse_nst_html(html, label):
                 elif self.cur_row and len(self.cur_row) > 3:
                     self.rows.append(dict(zip(self.headers, self.cur_row)))
             elif tag == "table": self.in_t = False
+
         def handle_data(self, data):
             if self.in_th or self.in_td: self.cell += data
+
     p = P(); p.feed(html)
-    print(f"    → {len(p.rows)} rows ({label})")
+
+    if not p.rows:
+        print(f"    → 0 rows ({label})")
+        print(f"    DEBUG: table IDs in page: {all_table_ids or 'none found'}")
+        # Print first column headers we can find to help diagnose
+        import re as re2
+        ths = re2.findall(r'<th[^>]*>\s*(.*?)\s*</th>', html[:6000])
+        if ths:
+            print(f"    DEBUG: first headers found: {ths[:10]}")
+        return []
+
+    print(f"    → {len(p.rows)} rows ({label}) [table id={p.active_id!r}]")
+    # Print header keys on first successful parse to confirm field names
+    if p.rows:
+        print(f"    DEBUG: columns: {list(p.rows[0].keys())[:15]}")
     return p.rows
 
 def nst_index(rows):
