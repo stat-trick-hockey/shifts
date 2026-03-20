@@ -105,7 +105,7 @@ def fetch_season(season_id):
         "realtime":    fetch_nhl_endpoint("realtime",    "hits",        season_id, "realtime"),
         "powerplay":   fetch_nhl_endpoint("powerplay",   "ppPoints",    season_id, "powerplay"),
         "penaltykill": fetch_nhl_endpoint("penaltykill", "shTimeOnIce", season_id, "penaltykill"),
-        "shootout":    fetch_nhl_endpoint("shootout",    "soGoals",     season_id, "shootout"),
+        "shootout":    fetch_nhl_endpoint("shootout",    "shootoutGoals", season_id, "shootout"),
     }
 
 
@@ -118,7 +118,8 @@ def fetch_nst(season_id, stdoi, sit="5v5"):
         "stype": 2, "sit": sit, "score": "all", "stdoi": stdoi,
         "rate": "n", "team": "ALL", "pos": "S", "loc": "B",
         "toi": 0, "gpfilt": "none", "fd": "", "td": "",
-        "tgp": 410, "lines": "single", "draftteam": "ALL",
+        "tgp": 0 if stdoi == "ind" else 410,  # ind table needs no min-TOI filter
+        "lines": "single", "draftteam": "ALL",
     }
     print(f"  Fetching {label}...")
     r = safe_get(url, NST_HEADERS, params)
@@ -295,7 +296,7 @@ def main():
         print(f"\n── {season_id} ──────────────────────────────────────────")
         nhl  = fetch_season(season_id)
         nst5 = fetch_nst(season_id, "oi",  "5v5")
-        nsti = fetch_nst(season_id, "ind", "5v5")
+        nsti = fetch_nst(season_id, "ind", "all")
         print(f"  Merging...")
         season_data[season_id] = merge_season(nhl, nst_index(nst5), nst_index(nsti))
         print(f"  → {len(season_data[season_id])} players merged")
