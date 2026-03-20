@@ -131,25 +131,10 @@ def fetch_nst_onice(season_id, sit="5v5") -> list[dict]:
     return rows
 
 
-def fetch_nst_individual(season_id, sit="5v5") -> list[dict]:
-    """Individual stats (ixG, iCF, iSCF) from skatersindividual.php."""
-    url = "https://www.naturalstattrick.com/skatersindividual.php"
-    label = f"NST individual {sit} [{season_id}]"
-    params = {
-        "fromseason": season_id, "thruseason": season_id,
-        "stype": 2, "sit": sit, "score": "all",
-        "rate": "n", "team": "ALL", "pos": "S", "loc": "B",
-        "toi": 0, "gpfilt": "none", "fd": "", "td": "",
-        "tgp": 0, "lines": "single", "draftteam": "ALL",
-    }
-    print(f"  Fetching {label}...")
-    r = safe_get(url, NST_HEADERS, params)
-    if not r:
-        print(f"    → failed, will use fallback")
-        return []
-    rows = parse_nst_html(r.text, label)
-    time.sleep(1.0)
-    return rows
+# NST individual page (skatersindividual.php) returns 404 and playerteams.php?stdoi=ind
+# renders via JavaScript — not scrapeable without a headless browser.
+# ixG is instead estimated from NHL API shot data using positional shot quality weights.
+# See compute_ixg() below.
 
 # NST uses different table IDs depending on the view
 NST_TABLE_IDS = {"players", "skaters", "skaterstats", "report"}
@@ -223,7 +208,7 @@ def nst_index(rows):
 
 
 # ── MERGE ONE SEASON ─────────────────────────────────────────────────────────
-def merge_season(nhl, nst5_idx, nsti_idx):
+def merge_season(nhl, nst5_idx, _nsti_idx=None):
     rt_map = {r["playerId"]: r for r in nhl["realtime"]}
     pp_map = {r["playerId"]: r for r in nhl["powerplay"]}
     pk_map = {r["playerId"]: r for r in nhl["penaltykill"]}
@@ -240,7 +225,6 @@ def merge_season(nhl, nst5_idx, nsti_idx):
         pk = pk_map.get(pid, {})
         so = so_map.get(pid, {})
         n5 = nst5_idx.get(key, {})
-        ni = nsti_idx.get(key, {})
 
         gp = safe_int(s.get("gamesPlayed"))
 
@@ -278,21 +262,14 @@ def merge_season(nhl, nst5_idx, nsti_idx):
         xgf_pct    = safe_float(n5.get("xGF%"))
         xg_for     = safe_float(n5.get("xGF"))
         xg_against = safe_float(n5.get("xGA"))
-        # NST individual column names vary — try all known variants
-        ixg = (safe_float(ni.get("ixG"))
-               or safe_float(ni.get("ixg"))
-               or safe_float(ni.get("iXG"))
-               or safe_float(ni.get("Individual xG")))
-        icf = (safe_float(ni.get("iCF"))
-               or safe_float(ni.get("icf"))
-               or safe_float(ni.get("Individual CF")))
-
-        # ── xG fallback: shots × league avg SH% ──
-        if ixg is None and shots > 0:
-            ixg = round(shots * LEAGUE_AVG_SH_PCT, 1)
-            ixg_source = "estimated"
-        else:
-            ixg_source = "nst" if ixg is not None else None
+        # ixG computed from NHL API shots using positional shot quality weights.
+        # Weights derived from historical NHL finishing rates by position:
+        #   C/LW/RW: ~10.5%  D: ~6.5%  (shots from distance skew lower)
+        pos_code = s.get("positionCode", "")
+        shot_quality_weight = 0.065 if pos_code == "D" else 0.105
+        ixg = round(shots * shot_quality_weight, 2) if shots > 0 else 0.0
+        ixg_source = "estimated"
+        icf = None  # requires NST headless scrape
 
         # ── Derived ──
         g      = safe_int(s.get("goals"))
@@ -353,9 +330,8 @@ def main():
         print(f"\n── {season_id} ──────────────────────────────────────────")
         nhl  = fetch_season(season_id)
         nst5 = fetch_nst_onice(season_id, "5v5")
-        nsti = fetch_nst_individual(season_id, "5v5")
         print(f"  Merging...")
-        season_data[season_id] = merge_season(nhl, nst_index(nst5), nst_index(nsti))
+        season_data[season_id] = merge_season(nhl, nst_index(nst5), {})
         print(f"  → {len(season_data[season_id])} players merged")
 
     # Build final list: current season primary, attach prev_ fields
