@@ -404,6 +404,9 @@
     <div class="empty-leaders">
       <div class="section-label">Season Leaders</div>
       <div class="leaders-grid" id="leaders-grid"></div>
+      <div style="text-align:center;margin-top:28px">
+        <button class="glossary-trigger" id="glossary-open">&#63; Stat Glossary</button>
+      </div>
     </div>
   </div>
 
@@ -759,9 +762,7 @@ function closeGlossary() {
 }
 // Defer glossary listeners until DOM is fully parsed
 document.addEventListener('DOMContentLoaded', () => {
-  document.addEventListener('click', (e) => {
-    if (e.target.id === 'glossary-open') openGlossary();
-  });
+  document.getElementById('glossary-open').addEventListener('click', openGlossary);
   document.getElementById('glossary-close').addEventListener('click', closeGlossary);
   document.getElementById('glossary-overlay').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeGlossary();
