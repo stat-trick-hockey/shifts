@@ -253,9 +253,13 @@ def merge_season(nhl, nst5_idx, _nsti_idx=None):
         shots      = safe_int(s.get("shots"))
         sh_pct_raw = safe_float(s.get("shootingPctg"))
         if sh_pct_raw is not None:
+            # API returns decimal (0.142) or sometimes percentage (14.2) — handle both
             sh_pct = round(sh_pct_raw * 100, 1) if sh_pct_raw <= 1.0 else round(sh_pct_raw, 1)
+        elif shots > 0:
+            # Fallback: compute directly from goals/shots
+            sh_pct = round(safe_int(s.get("goals")) / shots * 100, 1)
         else:
-            sh_pct = None
+            sh_pct = 0.0
 
         # ── Advanced (NST) ──
         cf_pct     = safe_float(n5.get("CF%"))
