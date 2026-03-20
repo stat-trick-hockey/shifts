@@ -641,7 +641,7 @@ function showPlayer(id) {
   `;
 
   // Shooting
-  const sFct = p.shooting_pct ? (p.shooting_pct * 100).toFixed(1) : null;
+  const sFct = p.sh_pct != null ? p.sh_pct.toFixed(1) : null;
   document.getElementById('shooting-section').innerHTML = `
     <div class="stat-row">
       <div class="stat-row-label">SHOTS</div>
@@ -653,13 +653,13 @@ function showPlayer(id) {
       <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${sFct ? Math.min(100,parseFloat(sFct)/25*100).toFixed(0) : 0}%"></div></div>
       <div class="stat-row-value gold">${sFct ? sFct+'%' : '—'}</div>
     </div>
-    ${p.icf !== null && p.icf !== undefined ? `
+    ${p.icf != null ? `
     <div class="stat-row">
       <div class="stat-row-label">iCF (5v5)</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill ice" style="width:${Math.min(100,(p.icf/300*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.icf}</div>
     </div>` : ''}
-    ${p.ixg !== null && p.ixg !== undefined ? `
+    ${p.ixg != null ? `
     <div class="stat-row">
       <div class="stat-row-label">ixG (5v5)</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill green" style="width:${Math.min(100,(p.ixg/40*100)).toFixed(0)}%"></div></div>
