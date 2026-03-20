@@ -1,0 +1,76 @@
+name: Daily Player Data Refresh
+
+on:
+  schedule:
+    # 6:00 AM ET = 11:00 UTC (accounts for EST; adjust to 10:00 UTC in summer for EDT)
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: "Enable debug output"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install requests --quiet
+
+      - name: Fetch player data
+        run: |
+          python fetch_players.py
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      - name: Verify output
+        run: |
+          echo "=== Output file info ==="
+          ls -lh docs/players.json
+          echo ""
+          echo "=== Player count ==="
+          python3 -c "
+          import json
+          with open('docs/players.json') as f:
+              d = json.load(f)
+          print(f\"  Players: {d['count']}\")
+          print(f\"  Updated: {d['updated']}\")
+          print(f\"  Top 5: {', '.join(p['name'] for p in d['players'][:5])}\")
+          "
+
+      - name: Commit and push data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/players.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: refresh player data $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
+
+      - name: Upload artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-logs
+          path: |
+            docs/players.json
+          retention-days: 3
