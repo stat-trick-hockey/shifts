@@ -2,6 +2,7 @@
 """
 THE SHIFT — NHL Player Data Fetcher
 Merges NHL Stats API (counting stats) + Natural Stat Trick (advanced stats)
+Fetches both 20242025 (previous) and 20252026 (current) seasons.
 Writes: docs/players.json
 """
 
@@ -17,50 +18,45 @@ try:
 except ImportError:
     print("Installing requests...")
     import subprocess
-    subprocess.run([sys.executable, "-m", "pip", "install", "requests", "--break-system-packages", "-q"])
+    subprocess.run([sys.executable, "-m", "pip", "install", "requests", "-q"])
     import requests
 
-# ── CONFIG ──────────────────────────────────────────────────────────────────
-SEASON_ID   = "20242025"
-GAME_TYPE   = 2          # regular season
-OUTPUT_PATH = Path("docs/players.json")
-NHL_PAGE_SIZE = 100      # NHL API max per request
+# ── CONFIG ───────────────────────────────────────────────────────────────────
+SEASONS        = ["20252026", "20242025"]   # current first, previous second
+CURRENT_SEASON = SEASONS[0]
+GAME_TYPE      = 2                          # regular season
+OUTPUT_PATH    = Path("docs/players.json")
+NHL_PAGE_SIZE  = 100
+
+# League-average SH% used as xG fallback when NST is unavailable
+LEAGUE_AVG_SH_PCT = 0.105
 
 NHL_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; TheShiftBot/1.0)",
     "Accept": "application/json",
 }
-
 NST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept": "text/html,application/xhtml+xml",
     "Referer": "https://www.naturalstattrick.com/",
 }
 
-# ── HELPERS ─────────────────────────────────────────────────────────────────
+# ── HELPERS ──────────────────────────────────────────────────────────────────
 def normalize_name(name: str) -> str:
-    """Lowercase, strip accents-ish, remove punctuation for matching."""
     name = name.lower().strip()
-    replacements = {
-        "é":"e","è":"e","ê":"e","ë":"e",
-        "á":"a","à":"a","â":"a","ä":"a",
-        "í":"i","ì":"i","î":"i","ï":"i",
-        "ó":"o","ò":"o","ô":"o","ö":"o",
-        "ú":"u","ù":"u","û":"u","ü":"u",
-        "ý":"y","ñ":"n","ç":"c","ř":"r",
-        "š":"s","ž":"z","č":"c","ě":"e",
-        "ů":"u","ď":"d","ť":"t","ň":"n",
-    }
-    for k, v in replacements.items():
+    for k, v in {
+        "é":"e","è":"e","ê":"e","ë":"e","á":"a","à":"a","â":"a","ä":"a",
+        "í":"i","ì":"i","î":"i","ï":"i","ó":"o","ò":"o","ô":"o","ö":"o",
+        "ú":"u","ù":"u","û":"u","ü":"u","ý":"y","ñ":"n","ç":"c","ř":"r",
+        "š":"s","ž":"z","č":"c","ě":"e","ů":"u","ď":"d","ť":"t","ň":"n",
+    }.items():
         name = name.replace(k, v)
-    name = re.sub(r"[^a-z ]", "", name)
-    return " ".join(name.split())
+    return " ".join(re.sub(r"[^a-z ]", "", name).split())
 
-
-def safe_get(url: str, headers: dict, params: dict = None, retries: int = 3, delay: float = 2.0):
+def safe_get(url, headers, params=None, retries=3, delay=2.0):
     for attempt in range(retries):
         try:
-            r = requests.get(url, headers=headers, params=params, timeout=20)
+            r = requests.get(url, headers=headers, params=params, timeout=25)
             r.raise_for_status()
             return r
         except requests.RequestException as e:
@@ -69,426 +65,293 @@ def safe_get(url: str, headers: dict, params: dict = None, retries: int = 3, del
                 time.sleep(delay * (attempt + 1))
     return None
 
+def safe_float(v, default=None):
+    try:    return float(v)
+    except: return default
 
-# ── NHL STATS API ────────────────────────────────────────────────────────────
-def fetch_nhl_summary() -> list[dict]:
-    """
-    Endpoint: https://api.nhle.com/stats/rest/en/skater/summary
-    Returns all skaters with: GP, G, A, PTS, +/-, TOI, PP/PK TOI
-    """
-    url = "https://api.nhle.com/stats/rest/en/skater/summary"
-    all_players = []
-    start = 0
+def safe_int(v, default=0):
+    try:    return int(float(v))
+    except: return default
 
-    print("Fetching NHL summary stats...")
+def seconds_to_mmss(seconds: float) -> str:
+    if not seconds: return "0:00"
+    return f"{int(seconds // 60)}:{int(seconds % 60):02d}"
+
+
+# ── NHL API FETCHERS ─────────────────────────────────────────────────────────
+def fetch_nhl_endpoint(endpoint, sort, season_id, label):
+    url = f"https://api.nhle.com/stats/rest/en/skater/{endpoint}"
+    all_rows, start = [], 0
+    print(f"  Fetching {label}...")
     while True:
         params = {
-            "limit": NHL_PAGE_SIZE,
-            "start": start,
-            "sort": "points",
-            "cayenneExp": f"seasonId={SEASON_ID} and gameTypeId={GAME_TYPE}",
+            "limit": NHL_PAGE_SIZE, "start": start, "sort": sort,
+            "cayenneExp": f"seasonId={season_id} and gameTypeId={GAME_TYPE}",
         }
         r = safe_get(url, NHL_HEADERS, params)
-        if not r:
-            print(f"  Failed at offset {start}, stopping.")
-            break
-        data = r.json()
-        rows = data.get("data", [])
-        if not rows:
-            break
-        all_players.extend(rows)
-        print(f"  Fetched {len(all_players)} skaters so far...")
-        if len(rows) < NHL_PAGE_SIZE:
-            break
-        start += NHL_PAGE_SIZE
-        time.sleep(0.4)
-
-    print(f"  Total NHL skaters: {len(all_players)}")
-    return all_players
-
-
-def fetch_nhl_realtime() -> list[dict]:
-    """
-    Endpoint: https://api.nhle.com/stats/rest/en/skater/realtime
-    Returns: hits, blocks, takeaways, giveaways, missed shots
-    """
-    url = "https://api.nhle.com/stats/rest/en/skater/realtime"
-    all_players = []
-    start = 0
-
-    print("Fetching NHL realtime stats...")
-    while True:
-        params = {
-            "limit": NHL_PAGE_SIZE,
-            "start": start,
-            "sort": "hits",
-            "cayenneExp": f"seasonId={SEASON_ID} and gameTypeId={GAME_TYPE}",
-        }
-        r = safe_get(url, NHL_HEADERS, params)
-        if not r:
-            break
+        if not r: break
         rows = r.json().get("data", [])
-        if not rows:
-            break
-        all_players.extend(rows)
-        if len(rows) < NHL_PAGE_SIZE:
-            break
+        if not rows: break
+        all_rows.extend(rows)
+        if len(rows) < NHL_PAGE_SIZE: break
         start += NHL_PAGE_SIZE
-        time.sleep(0.4)
+        time.sleep(0.35)
+    print(f"    → {len(all_rows)} rows")
+    return all_rows
 
-    print(f"  Total realtime rows: {len(all_players)}")
-    return all_players
-
-
-def fetch_nhl_powerplay() -> list[dict]:
-    """
-    Endpoint: https://api.nhle.com/stats/rest/en/skater/powerplay
-    Returns: PP goals, assists, TOI breakdown
-    """
-    url = "https://api.nhle.com/stats/rest/en/skater/powerplay"
-    all_players = []
-    start = 0
-
-    print("Fetching NHL power play stats...")
-    while True:
-        params = {
-            "limit": NHL_PAGE_SIZE,
-            "start": start,
-            "sort": "ppPoints",
-            "cayenneExp": f"seasonId={SEASON_ID} and gameTypeId={GAME_TYPE}",
-        }
-        r = safe_get(url, NHL_HEADERS, params)
-        if not r:
-            break
-        rows = r.json().get("data", [])
-        if not rows:
-            break
-        all_players.extend(rows)
-        if len(rows) < NHL_PAGE_SIZE:
-            break
-        start += NHL_PAGE_SIZE
-        time.sleep(0.4)
-
-    print(f"  Total PP rows: {len(all_players)}")
-    return all_players
-
-
-# ── NATURAL STAT TRICK ───────────────────────────────────────────────────────
-def fetch_nst_5v5() -> list[dict]:
-    """
-    NST individual skater stats at 5v5, season-to-date.
-    URL: https://www.naturalstattrick.com/playerteams.php
-    Returns CSV-style table parsed from HTML.
-    """
-    url = "https://www.naturalstattrick.com/playerteams.php"
-    season_str = f"{SEASON_ID[:4]}{SEASON_ID[4:]}"  # e.g. "20242025"
-    params = {
-        "fromseason": season_str,
-        "thruseason": season_str,
-        "stype": 2,       # regular season
-        "sit": "5v5",
-        "score": "all",
-        "stdoi": "oi",    # on-ice
-        "rate": "n",      # totals not rates
-        "team": "ALL",
-        "pos": "S",       # skaters
-        "loc": "B",       # home + away
-        "toi": 0,
-        "gpfilt": "none",
-        "fd": "",
-        "td": "",
-        "tgp": 410,
-        "lines": "single",
-        "draftteam": "ALL",
+def fetch_season(season_id):
+    return {
+        "summary":     fetch_nhl_endpoint("summary",     "points",      season_id, "summary"),
+        "realtime":    fetch_nhl_endpoint("realtime",    "hits",        season_id, "realtime"),
+        "powerplay":   fetch_nhl_endpoint("powerplay",   "ppPoints",    season_id, "powerplay"),
+        "penaltykill": fetch_nhl_endpoint("penaltykill", "shTimeOnIce", season_id, "penaltykill"),
+        "shootout":    fetch_nhl_endpoint("shootout",    "soGoals",     season_id, "shootout"),
     }
 
-    print("Fetching Natural Stat Trick 5v5 data...")
-    r = safe_get(url, NST_HEADERS, params)
-    if not r:
-        print("  NST fetch failed — advanced stats will be null.")
-        return []
 
-    return parse_nst_html(r.text, "5v5")
-
-
-def fetch_nst_individual() -> list[dict]:
-    """
-    NST individual (not on-ice) for xG scored, iCF, iSCF.
-    """
+# ── NST FETCHERS ─────────────────────────────────────────────────────────────
+def fetch_nst(season_id, stdoi, sit="5v5"):
     url = "https://www.naturalstattrick.com/playerteams.php"
-    season_str = f"{SEASON_ID[:4]}{SEASON_ID[4:]}"
+    label = f"NST {sit}/{stdoi} [{season_id}]"
     params = {
-        "fromseason": season_str,
-        "thruseason": season_str,
-        "stype": 2,
-        "sit": "5v5",
-        "score": "all",
-        "stdoi": "ind",   # individual
-        "rate": "n",
-        "team": "ALL",
-        "pos": "S",
-        "loc": "B",
-        "toi": 0,
-        "gpfilt": "none",
-        "fd": "",
-        "td": "",
-        "tgp": 410,
-        "lines": "single",
-        "draftteam": "ALL",
+        "fromseason": season_id, "thruseason": season_id,
+        "stype": 2, "sit": sit, "score": "all", "stdoi": stdoi,
+        "rate": "n", "team": "ALL", "pos": "S", "loc": "B",
+        "toi": 0, "gpfilt": "none", "fd": "", "td": "",
+        "tgp": 410, "lines": "single", "draftteam": "ALL",
     }
-
-    print("Fetching Natural Stat Trick individual data...")
+    print(f"  Fetching {label}...")
     r = safe_get(url, NST_HEADERS, params)
     if not r:
-        print("  NST individual fetch failed.")
+        print(f"    → failed, will use fallback")
         return []
+    rows = parse_nst_html(r.text, label)
+    time.sleep(1.0)
+    return rows
 
-    return parse_nst_html(r.text, "individual")
-
-
-def parse_nst_html(html: str, table_type: str) -> list[dict]:
-    """Parse NST player table from HTML. Returns list of dicts."""
+def parse_nst_html(html, label):
     from html.parser import HTMLParser
-
-    class TableParser(HTMLParser):
+    class P(HTMLParser):
         def __init__(self):
             super().__init__()
-            self.in_table = False
-            self.headers = []
-            self.rows = []
-            self.current_row = []
-            self.in_th = False
-            self.in_td = False
-            self.current_cell = ""
-            self.header_done = False
-
+            self.in_t = self.in_th = self.in_td = False
+            self.headers = []; self.rows = []; self.cur_row = []
+            self.cell = ""; self.hdr_done = False
         def handle_starttag(self, tag, attrs):
-            attrs_dict = dict(attrs)
-            if tag == "table" and attrs_dict.get("id") == "players":
-                self.in_table = True
-            if self.in_table:
-                if tag == "th":
-                    self.in_th = True
-                    self.current_cell = ""
-                elif tag == "td":
-                    self.in_td = True
-                    self.current_cell = ""
-                elif tag == "tr" and self.header_done:
-                    self.current_row = []
-
+            d = dict(attrs)
+            if tag == "table" and d.get("id") == "players": self.in_t = True
+            if not self.in_t: return
+            if tag == "th":   self.in_th = True;  self.cell = ""
+            elif tag == "td": self.in_td = True;  self.cell = ""
+            elif tag == "tr" and self.hdr_done: self.cur_row = []
         def handle_endtag(self, tag):
-            if self.in_table:
-                if tag == "th":
-                    self.headers.append(self.current_cell.strip())
-                    self.in_th = False
-                elif tag == "td":
-                    self.current_row.append(self.current_cell.strip())
-                    self.in_td = False
-                elif tag == "tr":
-                    if not self.header_done and self.headers:
-                        self.header_done = True
-                    elif self.current_row and len(self.current_row) > 3:
-                        self.rows.append(dict(zip(self.headers, self.current_row)))
-                elif tag == "table" and self.in_table:
-                    self.in_table = False
-
+            if not self.in_t: return
+            if tag == "th":
+                self.headers.append(self.cell.strip()); self.in_th = False
+            elif tag == "td":
+                self.cur_row.append(self.cell.strip()); self.in_td = False
+            elif tag == "tr":
+                if not self.hdr_done and self.headers: self.hdr_done = True
+                elif self.cur_row and len(self.cur_row) > 3:
+                    self.rows.append(dict(zip(self.headers, self.cur_row)))
+            elif tag == "table": self.in_t = False
         def handle_data(self, data):
-            if self.in_th or self.in_td:
-                self.current_cell += data
+            if self.in_th or self.in_td: self.cell += data
+    p = P(); p.feed(html)
+    print(f"    → {len(p.rows)} rows ({label})")
+    return p.rows
 
-    parser = TableParser()
-    parser.feed(html)
-
-    if not parser.rows:
-        print(f"  No rows parsed from NST ({table_type})")
-        return []
-
-    print(f"  Parsed {len(parser.rows)} rows from NST ({table_type})")
-    return parser.rows
-
-
-# ── MERGE ────────────────────────────────────────────────────────────────────
-def seconds_to_mmss(seconds: float) -> str:
-    if not seconds:
-        return "0:00"
-    m = int(seconds // 60)
-    s = int(seconds % 60)
-    return f"{m}:{s:02d}"
+def nst_index(rows):
+    idx = {}
+    for row in rows:
+        name = row.get("Player", row.get("Name", ""))
+        key  = normalize_name(name)
+        if key: idx[key] = row
+    return idx
 
 
-def merge_players(
-    nhl_summary: list[dict],
-    nhl_realtime: list[dict],
-    nhl_pp: list[dict],
-    nst_5v5: list[dict],
-    nst_ind: list[dict],
-) -> list[dict]:
+# ── MERGE ONE SEASON ─────────────────────────────────────────────────────────
+def merge_season(nhl, nst5_idx, nsti_idx):
+    rt_map = {r["playerId"]: r for r in nhl["realtime"]}
+    pp_map = {r["playerId"]: r for r in nhl["powerplay"]}
+    pk_map = {r["playerId"]: r for r in nhl["penaltykill"]}
+    so_map = {r["playerId"]: r for r in nhl.get("shootout", [])}
 
-    # Index realtime and PP by playerId
-    rt_map = {r["playerId"]: r for r in nhl_realtime}
-    pp_map = {r["playerId"]: r for r in nhl_pp}
+    players = {}
+    for s in nhl["summary"]:
+        pid  = s.get("playerId")
+        name = s.get("skaterFullName", "")
+        key  = normalize_name(name)
 
-    # Index NST by normalized name
-    def nst_index(rows: list[dict]) -> dict:
-        idx = {}
-        for row in rows:
-            name = row.get("Player", row.get("Name", ""))
-            key = normalize_name(name)
-            if key:
-                idx[key] = row
-        return idx
+        rt = rt_map.get(pid, {})
+        pp = pp_map.get(pid, {})
+        pk = pk_map.get(pid, {})
+        so = so_map.get(pid, {})
+        n5 = nst5_idx.get(key, {})
+        ni = nsti_idx.get(key, {})
 
-    nst5_idx = nst_index(nst_5v5)
-    nsti_idx = nst_index(nst_ind)
+        gp = safe_int(s.get("gamesPlayed"))
 
-    def safe_float(v, default=None):
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return default
+        # ── TOI: summary gives per-game seconds ──
+        toi_sec = safe_float(s.get("timeOnIcePerGame"), 0)
 
-    def safe_int(v, default=0):
-        try:
-            return int(float(v))
-        except (TypeError, ValueError):
-            return default
+        # PP/PK endpoints give TOTAL seconds for the season
+        pp_toi_total = safe_float(pp.get("ppTimeOnIce"), 0)
+        pp_toi_sec   = (pp_toi_total / gp) if gp > 0 else 0
 
-    merged = []
-    for s in nhl_summary:
-        pid    = s.get("playerId")
-        name   = s.get("skaterFullName", "")
-        key    = normalize_name(name)
+        pk_toi_total = safe_float(pk.get("shTimeOnIce"), 0)
+        pk_toi_sec   = (pk_toi_total / gp) if gp > 0 else 0
 
-        rt  = rt_map.get(pid, {})
-        pp  = pp_map.get(pid, {})
-        n5  = nst5_idx.get(key, {})
-        ni  = nsti_idx.get(key, {})
+        # ── PP stats ──
+        pp_g  = safe_int(pp.get("ppGoals"))
+        pp_a1 = safe_int(pp.get("ppPrimaryAssists"))
+        pp_a2 = safe_int(pp.get("ppSecondaryAssists"))
+        pp_pts = pp_g + pp_a1 + pp_a2
 
-        # TOI strings
-        toi_sec    = safe_float(s.get("timeOnIcePerGame"), 0)
-        pp_toi_sec = safe_float(s.get("ppTimeOnIcePerGame"), 0)
-        pk_toi_sec = safe_float(s.get("shTimeOnIcePerGame"), 0)
+        # ── PK / shorthanded stats ──
+        sh_g   = safe_int(pk.get("shGoals"))
+        sh_a   = safe_int(pk.get("shAssists", 0))
+        sh_pts = sh_g + sh_a
 
-        # Advanced stats from NST
-        cf_pct  = safe_float(n5.get("CF%"))
-        xgf_pct = safe_float(n5.get("xGF%"))
-        xg_for  = safe_float(n5.get("xGF"))   # on-ice xG for
+        # ── Shooting % fix: API returns decimal ──
+        shots      = safe_int(s.get("shots"))
+        sh_pct_raw = safe_float(s.get("shootingPctg"))
+        if sh_pct_raw is not None:
+            sh_pct = round(sh_pct_raw * 100, 1) if sh_pct_raw <= 1.0 else round(sh_pct_raw, 1)
+        else:
+            sh_pct = None
+
+        # ── Advanced (NST) ──
+        cf_pct     = safe_float(n5.get("CF%"))
+        xgf_pct    = safe_float(n5.get("xGF%"))
+        xg_for     = safe_float(n5.get("xGF"))
         xg_against = safe_float(n5.get("xGA"))
+        ixg        = safe_float(ni.get("ixG"))
+        icf        = safe_float(ni.get("iCF"))
 
-        # Individual xG from NST individual table
-        ixg     = safe_float(ni.get("ixG"))    # individual xG
-        icf     = safe_float(ni.get("iCF"))
+        # ── xG fallback: shots × league avg SH% ──
+        if ixg is None and shots > 0:
+            ixg = round(shots * LEAGUE_AVG_SH_PCT, 1)
+            ixg_source = "estimated"
+        else:
+            ixg_source = "nst" if ixg is not None else None
 
-        player = {
-            # Identity
-            "id":       pid,
-            "name":     name,
-            "team":     s.get("teamAbbrevs", ""),
+        # ── Derived ──
+        g      = safe_int(s.get("goals"))
+        ev_pts = safe_int(s.get("evPoints"))
+        ev_toi_h = max(0, ((toi_sec - pp_toi_sec - pk_toi_sec) * gp)) / 3600
+        pp_toi_h = pp_toi_total / 3600
+
+        players[pid] = {
+            "id": pid, "name": name,
+            "team": s.get("teamAbbrevs", ""),
             "team_full": s.get("teamFullName", ""),
-            "pos":      s.get("positionCode", ""),
-            "number":   str(s.get("sweaterNumber", "")),
-
-            # Counting stats
-            "gp":  safe_int(s.get("gamesPlayed")),
-            "g":   safe_int(s.get("goals")),
-            "a":   safe_int(s.get("assists")),
-            "pts": safe_int(s.get("points")),
+            "pos": s.get("positionCode", ""),
+            "number": str(s.get("sweaterNumber", "")),
+            "gp": gp,
+            "g":  g,
+            "a":  safe_int(s.get("assists")),
+            "pts":safe_int(s.get("points")),
             "plus_minus": safe_int(s.get("plusMinus")),
             "pim": safe_int(s.get("penaltyMinutes")),
-            "shots": safe_int(s.get("shots")),
-            "shooting_pct": safe_float(s.get("shootingPctg")),
-
-            # TOI
-            "toi":    seconds_to_mmss(toi_sec),
-            "toi_sec": toi_sec,
-            "pp_toi": seconds_to_mmss(pp_toi_sec),
-            "pp_toi_sec": pp_toi_sec,
-            "pk_toi": seconds_to_mmss(pk_toi_sec),
-            "pk_toi_sec": pk_toi_sec,
-
-            # PP breakdown
-            "pp_g":   safe_int(pp.get("ppGoals")),
-            "pp_a":   safe_int(pp.get("ppAssists") or pp.get("ppPrimaryAssists", 0)),
-            "pp_pts": safe_int(pp.get("ppPoints")),
-
-            # Physical (realtime)
-            "hits":       safe_int(rt.get("hits")),
-            "blocks":     safe_int(rt.get("blockedShots")),
-            "takeaways":  safe_int(rt.get("takeaways")),
-            "giveaways":  safe_int(rt.get("giveaways")),
-
-            # Advanced (NST 5v5)
-            "cf_pct":   cf_pct,
-            "xgf_pct":  xgf_pct,
-            "xg_for":   xg_for,
-            "xg_against": xg_against,
-
-            # Individual advanced (NST)
-            "ixg":  ixg,
-            "icf":  icf,
-
-            # Derived
-            "ev_pts": safe_int(s.get("evPoints")),
+            "shots": shots,
+            "sh_pct": sh_pct,
             "ev_g":   safe_int(s.get("evGoals")),
+            "ev_pts": ev_pts,
+            "pp_g": pp_g, "pp_a": pp_a1 + pp_a2,
+            "pp_a1": pp_a1, "pp_a2": pp_a2, "pp_pts": pp_pts,
+            "sh_g": sh_g, "sh_a": sh_a, "sh_pts": sh_pts,
+            "toi": seconds_to_mmss(toi_sec),   "toi_sec": toi_sec,
+            "pp_toi": seconds_to_mmss(pp_toi_sec), "pp_toi_sec": pp_toi_sec,
+            "pk_toi": seconds_to_mmss(pk_toi_sec), "pk_toi_sec": pk_toi_sec,
+            "hits": safe_int(rt.get("hits")),
+            "blocks": safe_int(rt.get("blockedShots")),
+            "takeaways": safe_int(rt.get("takeaways")),
+            "giveaways": safe_int(rt.get("giveaways")),
+            "cf_pct": cf_pct, "xgf_pct": xgf_pct,
+            "xg_for": xg_for, "xg_against": xg_against,
+            "ixg": ixg, "ixg_source": ixg_source, "icf": icf,
+            "p60_5v5": round(ev_pts / ev_toi_h, 2) if ev_toi_h > 0 else None,
+            "p60_pp":  round(pp_pts / pp_toi_h, 2) if pp_toi_h > 0 else None,
+            "xg_diff": round(g - ixg, 2) if ixg is not None else None,
             "ozs_pct": safe_float(s.get("offensiveZoneFaceoffPct")),
+            "so_g": safe_int(so.get("soGoals")),
+            "so_att": safe_int(so.get("soShots", so.get("soAttempts", 0))),
         }
-
-        # Compute P/60 values
-        ev_toi_h = ((toi_sec - pp_toi_sec - pk_toi_sec) * player["gp"]) / 3600
-        pp_toi_h = (pp_toi_sec * player["gp"]) / 3600
-
-        player["p60_5v5"] = round(player["ev_pts"] / ev_toi_h, 2) if ev_toi_h > 0 else None
-        player["p60_pp"]  = round(player["pp_pts"] / pp_toi_h, 2) if pp_toi_h > 0 else None
-
-        # xG over/under
-        if player["ixg"] is not None:
-            player["xg_diff"] = round(player["g"] - player["ixg"], 2)
-        else:
-            player["xg_diff"] = None
-
-        merged.append(player)
-
-    # Sort by points descending
-    merged.sort(key=lambda x: (x["pts"], x["g"]), reverse=True)
-    print(f"  Merged {len(merged)} players total.")
-    return merged
+    return players
 
 
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
-    print(f"\n{'='*56}")
-    print(f"  THE SHIFT — Data Fetch  |  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"  Season: {SEASON_ID}")
-    print(f"{'='*56}\n")
+    print(f"\n{'='*60}")
+    print(f"  THE SHIFT  |  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"  Seasons: {', '.join(SEASONS)}")
+    print(f"{'='*60}")
 
-    # Create output directory
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    season_data = {}
 
-    # Fetch from NHL API
-    nhl_summary  = fetch_nhl_summary()
-    nhl_realtime = fetch_nhl_realtime()
-    nhl_pp       = fetch_nhl_powerplay()
+    for season_id in SEASONS:
+        print(f"\n── {season_id} ──────────────────────────────────────────")
+        nhl  = fetch_season(season_id)
+        nst5 = fetch_nst(season_id, "oi",  "5v5")
+        nsti = fetch_nst(season_id, "ind", "5v5")
+        print(f"  Merging...")
+        season_data[season_id] = merge_season(nhl, nst_index(nst5), nst_index(nsti))
+        print(f"  → {len(season_data[season_id])} players merged")
 
-    # Fetch from NST (with graceful fallback)
-    nst_5v5 = fetch_nst_5v5()
-    nst_ind = fetch_nst_individual()
+    # Build final list: current season primary, attach prev_ fields
+    current  = season_data[SEASONS[0]]
+    previous = season_data[SEASONS[1]] if len(SEASONS) > 1 else {}
+    prev_by_name = {normalize_name(v["name"]): v for v in previous.values()}
 
-    # Merge
-    print("\nMerging datasets...")
-    players = merge_players(nhl_summary, nhl_realtime, nhl_pp, nst_5v5, nst_ind)
+    players = []
+    for pid, p in current.items():
+        prev = previous.get(pid) or prev_by_name.get(normalize_name(p["name"]), {})
+        for k in ["gp","g","a","pts","sh_pct","cf_pct","xgf_pct","p60_5v5"]:
+            p[f"prev_{k}"] = prev.get(k)
+        players.append(p)
 
-    # Build output
+    # Include prev-season-only players (injured/AHL this season)
+    current_names = {normalize_name(p["name"]) for p in players}
+    for prev in previous.values():
+        if normalize_name(prev["name"]) not in current_names:
+            prev["inactive_current_season"] = True
+            for k in ["gp","g","a","pts","sh_pct","cf_pct","xgf_pct","p60_5v5"]:
+                prev[f"prev_{k}"] = None
+            players.append(prev)
+
+    players.sort(key=lambda x: (
+        0 if x.get("inactive_current_season") else 1,
+        x["pts"], x["g"]
+    ), reverse=True)
+
+    if not players:
+        print("\n⚠ No players — aborting write.")
+        sys.exit(1)
+
     output = {
         "updated": datetime.now(timezone.utc).isoformat(),
-        "season": SEASON_ID,
+        "current_season": CURRENT_SEASON,
+        "seasons": SEASONS,
         "count": len(players),
         "players": players,
     }
 
-    OUTPUT_PATH.write_text(json.dumps(output, indent=2, ensure_ascii=False))
-    print(f"\n✓ Written {len(players)} players → {OUTPUT_PATH}")
-    print(f"  File size: {OUTPUT_PATH.stat().st_size / 1024:.1f} KB\n")
+    # Atomic write with JSON validation
+    tmp = OUTPUT_PATH.with_suffix(".tmp.json")
+    tmp.write_text(json.dumps(output, indent=2, ensure_ascii=False))
+    try:
+        json.loads(tmp.read_text())
+    except json.JSONDecodeError as e:
+        print(f"\n⚠ Invalid JSON output: {e} — aborting.")
+        tmp.unlink(); sys.exit(1)
+    tmp.replace(OUTPUT_PATH)
 
+    nst_n = sum(1 for p in players if p.get("ixg_source") == "nst")
+    est_n = sum(1 for p in players if p.get("ixg_source") == "estimated")
+    print(f"\n✓ {len(players)} players → {OUTPUT_PATH}  ({OUTPUT_PATH.stat().st_size/1024:.0f} KB)")
+    print(f"  xG: {nst_n} from NST  |  {est_n} estimated\n")
 
 if __name__ == "__main__":
     main()
