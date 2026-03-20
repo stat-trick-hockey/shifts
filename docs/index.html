@@ -291,6 +291,78 @@
     .leaders-grid { grid-template-columns:1fr; }
     .panel { padding:18px 20px; }
   }
+
+  /* GLOSSARY */
+  .glossary-trigger {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase;
+    cursor: pointer; background: none; border: 1px solid var(--border);
+    padding: 6px 14px; border-radius: 1px; transition: all 0.2s;
+    margin-top: 32px;
+  }
+  .glossary-trigger:hover { color: var(--gold); border-color: var(--gold-dim); }
+
+  .glossary-overlay {
+    position: fixed; inset: 0; background: rgba(4,4,2,0.92);
+    backdrop-filter: blur(8px); z-index: 500;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 40px 20px; overflow-y: auto;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+  }
+  .glossary-overlay.open { opacity: 1; pointer-events: all; }
+
+  .glossary-panel {
+    background: var(--surface); border: 1px solid var(--border-bright);
+    border-radius: 2px; width: 100%; max-width: 780px;
+    padding: 40px 48px; position: relative;
+    transform: translateY(20px); transition: transform 0.25s;
+  }
+  .glossary-overlay.open .glossary-panel { transform: translateY(0); }
+
+  .glossary-close {
+    position: absolute; top: 20px; right: 24px;
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    letter-spacing: 2px; color: var(--text-dim); cursor: pointer;
+    background: none; border: none; text-transform: uppercase;
+    transition: color 0.2s;
+  }
+  .glossary-close:hover { color: var(--gold); }
+
+  .glossary-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 32px;
+    letter-spacing: 4px; color: var(--gold-bright); margin-bottom: 6px;
+  }
+  .glossary-sub {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    letter-spacing: 3px; color: var(--text-muted); text-transform: uppercase;
+    margin-bottom: 36px;
+  }
+  .glossary-section-title {
+    font-family: 'Barlow Condensed', sans-serif; font-size: 11px;
+    font-weight: 700; letter-spacing: 4px; color: var(--gold-dim);
+    text-transform: uppercase; margin: 28px 0 14px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .glossary-section-title:first-of-type { margin-top: 0; }
+  .glossary-term {
+    display: grid; grid-template-columns: 120px 1fr;
+    gap: 12px 20px; padding: 10px 0;
+    border-bottom: 1px solid rgba(201,168,76,0.05);
+    align-items: baseline;
+  }
+  .glossary-term:last-child { border-bottom: none; }
+  .g-abbr {
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    font-weight: 500; color: var(--gold);
+    letter-spacing: 1px;
+  }
+  .g-def {
+    font-family: 'Barlow', sans-serif; font-size: 13px;
+    color: var(--text-dim); line-height: 1.5;
+  }
+  .g-def strong { color: var(--text); font-weight: 500; }
+
 </style>
 </head>
 <body>
@@ -675,7 +747,73 @@ document.getElementById('back-btn').addEventListener('click', () => {
   document.getElementById('empty-state').style.display = 'block';
 });
 
+
+// GLOSSARY
+document.getElementById('glossary-open')?.addEventListener('click', () => {
+  document.getElementById('glossary-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+});
+document.getElementById('glossary-close').addEventListener('click', closeGlossary);
+document.getElementById('glossary-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeGlossary();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGlossary(); });
+function closeGlossary() {
+  document.getElementById('glossary-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
 loadData();
 </script>
+
+<!-- GLOSSARY OVERLAY -->
+<div class="glossary-overlay" id="glossary-overlay">
+  <div class="glossary-panel">
+    <button class="glossary-close" id="glossary-close">✕ Close</button>
+    <div class="glossary-title">GLOSSARY</div>
+    <div class="glossary-sub">Stat definitions &amp; methodology</div>
+
+    <div class="glossary-section-title">Counting Stats</div>
+    <div class="glossary-term"><div class="g-abbr">GP</div><div class="g-def"><strong>Games Played.</strong> Total regular season games appeared in.</div></div>
+    <div class="glossary-term"><div class="g-abbr">G</div><div class="g-def"><strong>Goals.</strong> Total goals scored across all situations.</div></div>
+    <div class="glossary-term"><div class="g-abbr">A</div><div class="g-def"><strong>Assists.</strong> Primary and secondary assists combined.</div></div>
+    <div class="glossary-term"><div class="g-abbr">PTS</div><div class="g-def"><strong>Points.</strong> Goals + Assists.</div></div>
+    <div class="glossary-term"><div class="g-abbr">+/−</div><div class="g-def"><strong>Plus/Minus.</strong> Goals scored by the player's team minus goals allowed while at even strength. Positive is good.</div></div>
+    <div class="glossary-term"><div class="g-abbr">PIM</div><div class="g-def"><strong>Penalty Minutes.</strong> Total minutes spent in the penalty box.</div></div>
+
+    <div class="glossary-section-title">Shooting</div>
+    <div class="glossary-term"><div class="g-abbr">SHOTS</div><div class="g-def"><strong>Shots on Goal.</strong> Total shots that required a save or resulted in a goal.</div></div>
+    <div class="glossary-term"><div class="g-abbr">SH%</div><div class="g-def"><strong>Shooting Percentage.</strong> Goals ÷ Shots on Goal × 100. League average is ~10–11%. Sustained rates above 15% typically regress toward average.</div></div>
+    <div class="glossary-term"><div class="g-abbr">ixG</div><div class="g-def"><strong>Individual Expected Goals.</strong> An estimate of how many goals a player <em>should</em> have scored based on shot volume and position. Forwards estimated at 10.5% conversion, defensemen at 6.5% (point shots convert at lower rates). Source: positional model — true shot-quality ixG requires zone/angle data.</div></div>
+
+    <div class="glossary-section-title">Ice Time &amp; Usage</div>
+    <div class="glossary-term"><div class="g-abbr">TOI</div><div class="g-def"><strong>Time on Ice per Game.</strong> Average minutes per game across all situations. Elite forwards typically see 18–22 min.</div></div>
+    <div class="glossary-term"><div class="g-abbr">PP TOI</div><div class="g-def"><strong>Power Play Time on Ice per Game.</strong> Average PP minutes per game. Top PP units typically see 3–5 min/game.</div></div>
+    <div class="glossary-term"><div class="g-abbr">PK TOI</div><div class="g-def"><strong>Penalty Kill Time on Ice per Game.</strong> Average shorthanded minutes. High PK deployment signals coach trust defensively.</div></div>
+    <div class="glossary-term"><div class="g-abbr">OFF ZONE %</div><div class="g-def"><strong>Offensive Zone Faceoff %.</strong> Share of a player's faceoffs that start in the offensive zone. Higher % = sheltered deployment; lower % = tough defensive minutes.</div></div>
+
+    <div class="glossary-section-title">Special Teams</div>
+    <div class="glossary-term"><div class="g-abbr">PP G / A / PTS</div><div class="g-def"><strong>Power Play Goals / Assists / Points.</strong> Production while the team has a man advantage (5v4 or 5v3).</div></div>
+    <div class="glossary-term"><div class="g-abbr">SH G / PTS</div><div class="g-def"><strong>Shorthanded Goals / Points.</strong> Production while the team is killing a penalty. Rare and high-value.</div></div>
+    <div class="glossary-term"><div class="g-abbr">P/60 PP</div><div class="g-def"><strong>Points per 60 minutes on the Power Play.</strong> Normalizes PP production by time to compare players with different PP deployment.</div></div>
+
+    <div class="glossary-section-title">Advanced (via Natural Stat Trick)</div>
+    <div class="glossary-term"><div class="g-abbr">CF%</div><div class="g-def"><strong>Corsi For %.</strong> Share of all shot attempts (on goal, missed, blocked) taken by the player's team while they're on ice at 5v5. Above 50% = possession edge. A proxy for territorial dominance.</div></div>
+    <div class="glossary-term"><div class="g-abbr">xGF%</div><div class="g-def"><strong>Expected Goals For %.</strong> Share of expected goals belonging to the player's team at 5v5. More refined than CF% — weights shots by location and type. Above 50% = outchancing opponents.</div></div>
+    <div class="glossary-term"><div class="g-abbr">P/60 5v5</div><div class="g-def"><strong>Points per 60 minutes at Even Strength.</strong> Production rate at 5v5, removing the influence of PP/PK time. Best measure of even-strength offensive impact.</div></div>
+
+    <div class="glossary-section-title">Physical</div>
+    <div class="glossary-term"><div class="g-abbr">HITS</div><div class="g-def"><strong>Hits.</strong> Physical checks delivered. High hit totals often correlate with defensive/physical roles rather than offensive production.</div></div>
+    <div class="glossary-term"><div class="g-abbr">BLOCKS</div><div class="g-def"><strong>Blocked Shots.</strong> Shots blocked by the skater (not the goalie). High blocks = defensive commitment, common in defensive-minded players and d-men.</div></div>
+    <div class="glossary-term"><div class="g-abbr">TAKEAWAYS</div><div class="g-def"><strong>Takeaways.</strong> Pucks stolen from opponents via stick checks or physical play.</div></div>
+    <div class="glossary-term"><div class="g-abbr">GIVEAWAYS</div><div class="g-def"><strong>Giveaways.</strong> Pucks lost to opponents. High giveaway counts can indicate riskier puck-handling tendencies.</div></div>
+
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid var(--border);font-family:'DM Mono',monospace;font-size:10px;color:var(--text-muted);line-height:1.8">
+      DATA SOURCES: NHL Stats API (nhle.com) · Natural Stat Trick (naturalstattrick.com)<br>
+      REFRESHED DAILY AT 6AM ET VIA GITHUB ACTIONS
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
