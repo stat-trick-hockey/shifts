@@ -748,15 +748,7 @@ document.getElementById('back-btn').addEventListener('click', () => {
 });
 
 
-// GLOSSARY — use delegation for glossary-open since it's injected dynamically
-document.addEventListener('click', (e) => {
-  if (e.target.id === 'glossary-open') openGlossary();
-});
-document.getElementById('glossary-close').addEventListener('click', closeGlossary);
-document.getElementById('glossary-overlay').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) closeGlossary();
-});
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGlossary(); });
+// GLOSSARY
 function openGlossary() {
   document.getElementById('glossary-overlay').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -765,6 +757,17 @@ function closeGlossary() {
   document.getElementById('glossary-overlay').classList.remove('open');
   document.body.style.overflow = '';
 }
+// Defer glossary listeners until DOM is fully parsed
+document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'glossary-open') openGlossary();
+  });
+  document.getElementById('glossary-close').addEventListener('click', closeGlossary);
+  document.getElementById('glossary-overlay').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeGlossary();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGlossary(); });
+});
 
 loadData();
 </script>
