@@ -110,16 +110,37 @@ def fetch_season(season_id):
 
 
 # ── NST FETCHERS ─────────────────────────────────────────────────────────────
-def fetch_nst(season_id, stdoi, sit="5v5"):
+def fetch_nst_onice(season_id, sit="5v5") -> list[dict]:
+    """On-ice stats (CF%, xGF%) from playerteams.php with stdoi=oi."""
     url = "https://www.naturalstattrick.com/playerteams.php"
-    label = f"NST {sit}/{stdoi} [{season_id}]"
+    label = f"NST on-ice {sit} [{season_id}]"
     params = {
         "fromseason": season_id, "thruseason": season_id,
-        "stype": 2, "sit": sit, "score": "all", "stdoi": stdoi,
+        "stype": 2, "sit": sit, "score": "all", "stdoi": "oi",
         "rate": "n", "team": "ALL", "pos": "S", "loc": "B",
         "toi": 0, "gpfilt": "none", "fd": "", "td": "",
-        "tgp": 0 if stdoi == "ind" else 410,  # ind table needs no min-TOI filter
-        "lines": "single", "draftteam": "ALL",
+        "tgp": 410, "lines": "single", "draftteam": "ALL",
+    }
+    print(f"  Fetching {label}...")
+    r = safe_get(url, NST_HEADERS, params)
+    if not r:
+        print(f"    → failed, will use fallback")
+        return []
+    rows = parse_nst_html(r.text, label)
+    time.sleep(1.0)
+    return rows
+
+
+def fetch_nst_individual(season_id, sit="5v5") -> list[dict]:
+    """Individual stats (ixG, iCF, iSCF) from skatersindividual.php."""
+    url = "https://www.naturalstattrick.com/skatersindividual.php"
+    label = f"NST individual {sit} [{season_id}]"
+    params = {
+        "fromseason": season_id, "thruseason": season_id,
+        "stype": 2, "sit": sit, "score": "all",
+        "rate": "n", "team": "ALL", "pos": "S", "loc": "B",
+        "toi": 0, "gpfilt": "none", "fd": "", "td": "",
+        "tgp": 0, "lines": "single", "draftteam": "ALL",
     }
     print(f"  Fetching {label}...")
     r = safe_get(url, NST_HEADERS, params)
@@ -257,8 +278,14 @@ def merge_season(nhl, nst5_idx, nsti_idx):
         xgf_pct    = safe_float(n5.get("xGF%"))
         xg_for     = safe_float(n5.get("xGF"))
         xg_against = safe_float(n5.get("xGA"))
-        ixg        = safe_float(ni.get("ixG"))
-        icf        = safe_float(ni.get("iCF"))
+        # NST individual column names vary — try all known variants
+        ixg = (safe_float(ni.get("ixG"))
+               or safe_float(ni.get("ixg"))
+               or safe_float(ni.get("iXG"))
+               or safe_float(ni.get("Individual xG")))
+        icf = (safe_float(ni.get("iCF"))
+               or safe_float(ni.get("icf"))
+               or safe_float(ni.get("Individual CF")))
 
         # ── xG fallback: shots × league avg SH% ──
         if ixg is None and shots > 0:
@@ -325,8 +352,8 @@ def main():
     for season_id in SEASONS:
         print(f"\n── {season_id} ──────────────────────────────────────────")
         nhl  = fetch_season(season_id)
-        nst5 = fetch_nst(season_id, "oi",  "5v5")
-        nsti = fetch_nst(season_id, "ind", "all")
+        nst5 = fetch_nst_onice(season_id, "5v5")
+        nsti = fetch_nst_individual(season_id, "5v5")
         print(f"  Merging...")
         season_data[season_id] = merge_season(nhl, nst_index(nst5), nst_index(nsti))
         print(f"  → {len(season_data[season_id])} players merged")
