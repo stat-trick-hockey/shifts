@@ -456,7 +456,7 @@ let DATA_META = {};
 async function loadData() {
   try {
     const r = await fetch('players.json');
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status} — make sure players.json exists in /docs`);
     const data = await r.json();
     PLAYERS = data.players || [];
     DATA_META = { updated: data.updated, season: data.season, count: data.count };
@@ -748,16 +748,19 @@ document.getElementById('back-btn').addEventListener('click', () => {
 });
 
 
-// GLOSSARY
-document.getElementById('glossary-open')?.addEventListener('click', () => {
-  document.getElementById('glossary-overlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
+// GLOSSARY — use delegation for glossary-open since it's injected dynamically
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'glossary-open') openGlossary();
 });
 document.getElementById('glossary-close').addEventListener('click', closeGlossary);
 document.getElementById('glossary-overlay').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeGlossary();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGlossary(); });
+function openGlossary() {
+  document.getElementById('glossary-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
 function closeGlossary() {
   document.getElementById('glossary-overlay').classList.remove('open');
   document.body.style.overflow = '';
