@@ -270,6 +270,49 @@
   }
   .back-btn:hover { color:var(--gold); }
 
+
+  /* STAT TOOLTIPS */
+  .stat-row-label {
+    position: relative;
+    cursor: default;
+  }
+  .stat-row-label[data-tip] {
+    cursor: help;
+    border-bottom: 1px dotted var(--gold-dim);
+  }
+  .stat-row-label[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    width: 220px;
+    background: var(--surface2);
+    border: 1px solid var(--border-bright);
+    border-radius: 2px;
+    padding: 8px 12px;
+    font-family: 'Barlow', sans-serif;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--text);
+    line-height: 1.5;
+    z-index: 200;
+    pointer-events: none;
+    white-space: normal;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  }
+  /* Flip tooltip right on narrow panels */
+  .stat-row-label[data-tip]:hover::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    bottom: calc(100% + 2px);
+    border: 6px solid transparent;
+    border-top-color: var(--border-bright);
+    z-index: 201;
+    pointer-events: none;
+  }
+
   /* NULL state for advanced stats */
   .null-badge { font-family:'DM Mono',monospace; font-size:10px; color:var(--text-muted); letter-spacing:1px; }
 
@@ -633,12 +676,12 @@ function showPlayer(id) {
   const ppToi = parseFloat(p.pp_toi_sec) || 0;
   document.getElementById('usage-section').innerHTML = `
     <div class="stat-row">
-      <div class="stat-row-label">AVG TOI</div>
+      <div class="stat-row-label"${tip('AVG TOI')}>AVG TOI</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill ice" style="width:${Math.min(100,(toi/1500*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value gold">${p.toi}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label">PP TOI/GM</div>
+      <div class="stat-row-label"${tip('PP TOI/GM')}>PP TOI/GM</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${Math.min(100,(ppToi/360*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.pp_toi}</div>
     </div>
@@ -667,17 +710,17 @@ function showPlayer(id) {
   const evToi = toi - ppToi - pkToi;
   document.getElementById('ice-time-section').innerHTML = `
     <div class="stat-row" style="margin-bottom:18px">
-      <div class="stat-row-label">EVEN STR</div>
+      <div class="stat-row-label"${tip('EVEN STR')}>EVEN STR</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill ice" style="width:${Math.min(100,(evToi/toi*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${(evToi/60).toFixed(1)}m</div>
     </div>
     <div class="stat-row" style="margin-bottom:18px">
-      <div class="stat-row-label">POWER PLAY</div>
+      <div class="stat-row-label"${tip('POWER PLAY')}>POWER PLAY</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${Math.min(100,(ppToi/toi*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value gold">${(ppToi/60).toFixed(1)}m</div>
     </div>
     <div class="stat-row" style="margin-bottom:24px">
-      <div class="stat-row-label">PENALTY KILL</div>
+      <div class="stat-row-label"${tip('PENALTY KILL')}>PENALTY KILL</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill red" style="width:${Math.min(100,(pkToi/toi*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${(pkToi/60).toFixed(1)}m</div>
     </div>
@@ -689,27 +732,27 @@ function showPlayer(id) {
   // Physical
   document.getElementById('physical-section').innerHTML = `
     <div class="stat-row">
-      <div class="stat-row-label">HITS</div>
+      <div class="stat-row-label"${tip('HITS')}>{label}</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill red" style="width:${Math.min(100,((p.hits||0)/300*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.hits ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label">BLOCKS</div>
+      <div class="stat-row-label"${tip('BLOCKS')}>{label}</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill ice" style="width:${Math.min(100,((p.blocks||0)/200*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.blocks ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label">TAKEAWAYS</div>
+      <div class="stat-row-label"${tip('TAKEAWAYS')}>{label}</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill green" style="width:${Math.min(100,((p.takeaways||0)/120*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.takeaways ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label">GIVEAWAYS</div>
+      <div class="stat-row-label"${tip('GIVEAWAYS')}>{label}</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill red" style="width:${Math.min(100,((p.giveaways||0)/150*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.giveaways ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label">PIM</div>
+      <div class="stat-row-label"${tip('PIM')}>{label}</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${Math.min(100,((p.pim||0)/120*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.pim ?? '—'}</div>
     </div>
@@ -719,24 +762,24 @@ function showPlayer(id) {
   const sFct = p.sh_pct != null ? p.sh_pct.toFixed(1) : null;
   document.getElementById('shooting-section').innerHTML = `
     <div class="stat-row">
-      <div class="stat-row-label">SHOTS</div>
+      <div class="stat-row-label"${tip('SHOTS')}>SHOTS</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill ice" style="width:${Math.min(100,((p.shots||0)/350*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.shots ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label">SH%</div>
+      <div class="stat-row-label"${tip('SH%')}>SH%</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${sFct ? Math.min(100,parseFloat(sFct)/25*100).toFixed(0) : 0}%"></div></div>
       <div class="stat-row-value gold">${sFct ? sFct+'%' : '—'}</div>
     </div>
     ${p.icf != null ? `
     <div class="stat-row">
-      <div class="stat-row-label">iCF (5v5)</div>
+      <div class="stat-row-label"${tip('iCF (5v5)')}>iCF (5v5)</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill ice" style="width:${Math.min(100,(p.icf/300*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.icf}</div>
     </div>` : ''}
     ${p.ixg != null ? `
     <div class="stat-row">
-      <div class="stat-row-label">ixG (5v5)</div>
+      <div class="stat-row-label"${tip('ixG (5v5)')}>ixG (5v5)</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill green" style="width:${Math.min(100,(p.ixg/40*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value green">${p.ixg.toFixed(1)}</div>
     </div>` : ''}
@@ -750,6 +793,34 @@ document.getElementById('back-btn').addEventListener('click', () => {
   document.getElementById('empty-state').style.display = 'block';
 });
 
+
+
+// STAT TOOLTIPS
+const TIPS = {
+  "AVG TOI":     "Time on Ice per game across all situations. Elite forwards see 18–22 min.",
+  "PP TOI/GM":   "Power Play ice time per game. Top PP units deploy 3–5 min/game.",
+  "PK TOI/GM":   "Penalty Kill ice time per game. High PK time = trusted defensive role.",
+  "OFF ZONE %":  "% of faceoffs starting in the offensive zone. Higher = sheltered deployment.",
+  "CF% (5v5)":   "Corsi For %: share of all shot attempts while on ice at 5v5. >50% = possession edge.",
+  "xGF% (5v5)":  "Expected Goals For %: quality-weighted shot share at 5v5. More reliable than CF%.",
+  "EVEN STR":    "Ice time at even strength (5v5). The largest share for most forwards.",
+  "POWER PLAY":  "Ice time on the power play (5v4 or 5v3). High PP time = top unit role.",
+  "PENALTY KILL":"Ice time killing penalties. High PK time = defensive trust from coaching staff.",
+  "SHOTS":       "Shots on goal: attempts that required a save or scored.",
+  "SH%":         "Shooting %: Goals ÷ Shots × 100. League avg ~10–11%. Rates >15% often regress.",
+  "ixG (5v5)":   "Individual Expected Goals at 5v5. Estimated from shot volume × positional finishing rate (F: 10.5%, D: 6.5%). True shot-quality model requires zone/angle data.",
+  "iCF (5v5)":   "Individual Corsi For at 5v5: shot attempts generated regardless of outcome.",
+  "HITS":        "Physical checks delivered. High totals often signal a physical/defensive role.",
+  "BLOCKS":      "Shots blocked. High counts = defensive commitment, common for d-men.",
+  "TAKEAWAYS":   "Pucks stolen from opponents via stick checks or physical play.",
+  "GIVEAWAYS":   "Pucks lost to opponents. High counts can signal risky puck-handling.",
+  "PIM":         "Penalty Minutes. Time spent in the box for infractions.",
+};
+
+function tip(label) {
+  const t = TIPS[label];
+  return t ? ` data-tip="${t.replace(/"/g, '&quot;')}"` : '';
+}
 
 // GLOSSARY
 function openGlossary() {
