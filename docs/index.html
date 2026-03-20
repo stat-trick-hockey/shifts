@@ -732,27 +732,27 @@ function showPlayer(id) {
   // Physical
   document.getElementById('physical-section').innerHTML = `
     <div class="stat-row">
-      <div class="stat-row-label"${tip('HITS')}>{label}</div>
+      <div class="stat-row-label"${tip('HITS')}>HITS</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill red" style="width:${Math.min(100,((p.hits||0)/300*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.hits ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label"${tip('BLOCKS')}>{label}</div>
+      <div class="stat-row-label"${tip('BLOCKS')}>BLOCKS</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill ice" style="width:${Math.min(100,((p.blocks||0)/200*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.blocks ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label"${tip('TAKEAWAYS')}>{label}</div>
+      <div class="stat-row-label"${tip('TAKEAWAYS')}>TAKEAWAYS</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill green" style="width:${Math.min(100,((p.takeaways||0)/120*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.takeaways ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label"${tip('GIVEAWAYS')}>{label}</div>
+      <div class="stat-row-label"${tip('GIVEAWAYS')}>GIVEAWAYS</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill red" style="width:${Math.min(100,((p.giveaways||0)/150*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.giveaways ?? '—'}</div>
     </div>
     <div class="stat-row">
-      <div class="stat-row-label"${tip('PIM')}>{label}</div>
+      <div class="stat-row-label"${tip('PIM')}>PIM</div>
       <div class="stat-bar-wrap"><div class="stat-bar-fill" style="width:${Math.min(100,((p.pim||0)/120*100)).toFixed(0)}%"></div></div>
       <div class="stat-row-value">${p.pim ?? '—'}</div>
     </div>
